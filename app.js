@@ -1,423 +1,244 @@
-(() => {
-  const arena = document.getElementById("arena");
-  const statusEl = document.getElementById("status");
-
-  const modeSelectBtn = document.getElementById("modeSelect");
-  const modeElimBtn = document.getElementById("modeElim");
-
-  const MODE = {
-    SELECT: "select",
-    ELIM: "elimination",
-  };
-
-  const STATE = {
-    IDLE: "idle",
-    STABILIZING: "stabilizing",
-    COUNTDOWN: "countdown",
-    SHOWING: "showing",
-    WINNER_WAIT: "winner_wait",
-  };
-
-  const STABLE_MS = 1000;
-  const COUNTDOWN_MS = 3000;
-
-  let mode = MODE.SELECT;
-  let state = STATE.IDLE;
-
-  // Active touches on screen right now
-  // id -> { x, y, el }
-  const touches = new Map();
-
-  // In elimination mode, eliminated finger ids are ignored for eligibility
-  const eliminated = new Set();
-
-  // Current round participants (locked ids)
-  let lockedIds = [];
-
-  // In elimination mode, remaining ids for the overall elimination session
-  let remaining = new Set();
-
-  let stabilityTimer = null;
-  let countdownTimer = null;
-
-  let winnerId = null;
-
-  let countdownVisualTimer = null;
-
-
-  function setStatus(text) {
-    statusEl.textContent = text || "";
-  }
-
-  function setMode(nextMode) {
-    if (state !== STATE.IDLE) return;
-
-    mode = nextMode;
-    modeSelectBtn.classList.toggle("active", mode === MODE.SELECT);
-    modeElimBtn.classList.toggle("active", mode === MODE.ELIM);
-
-    eliminated.clear();
-    lockedIds = [];
-    remaining = new Set();
-    winnerId = null;
-
-    setStatus(mode === MODE.SELECT ? "Select mode" : "Elimination mode");
-    scheduleStabilityCheck();
-  }
-
-  modeSelectBtn.addEventListener("click", () => setMode(MODE.SELECT));
-  modeElimBtn.addEventListener("click", () => setMode(MODE.ELIM));
-
-  function vibrate(pattern) {
-    if (navigator.vibrate) navigator.vibrate(pattern);
-  }
-
-  function makeFingerEl() {
-    const el = document.createElement("div");
-    el.className = "finger";
-    arena.appendChild(el);
-    return el;
-  }
-
-  function removeFingerEl(el) {
-    if (!el) return;
-    if (el.parentNode) el.parentNode.removeChild(el);
-  }
-
-  function positionFingerEl(el, x, y) {
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-  }
-
-  function getEligibleIdsNow() {
-    const ids = [];
-    for (const id of touches.keys()) {
-      if (mode === MODE.ELIM && eliminated.has(id)) continue;
-      ids.push(id);
-    }
-    return ids.sort((a, b) => a - b);
-  }
-
-  function getEligibleIdsFromRemaining() {
-    // Only used in elimination mode after at least one elimination
-    const ids = [];
-    for (const id of remaining) {
-      if (!touches.has(id)) continue;
-      if (eliminated.has(id)) continue;
-      ids.push(id);
-    }
-    return ids.sort((a, b) => a - b);
-  }
-
-  function currentEligibilitySignature() {
-    const ids = (mode === MODE.ELIM && remaining.size > 0)
-      ? getEligibleIdsFromRemaining()
-      : getEligibleIdsNow();
-    return ids.join(",");
-  }
-
-  function clearTimers() {
-    if (stabilityTimer) clearTimeout(stabilityTimer);
-    if (countdownTimer) clearTimeout(countdownTimer);
-    stabilityTimer = null;
-    countdownTimer = null;
-  }
-
-  function resetToIdle() {
-    clearTimers();
-    stopCountdownVisuals();
-
-    state = STATE.IDLE;
-    lockedIds = [];
-    winnerId = null;
-
-    if (mode === MODE.SELECT) {
-      setStatus("Place 2+ fingers. Hold steady for 1 second.");
-    } else {
-      setStatus("Place 2+ fingers. Hold steady for 1 second.");
-    }
-
-    // Remove winner styling from any leftover elements
-    for (const { el } of touches.values()) {
-      el.classList.remove("winner", "pulse", "eliminated", "muted");
-    }
-
-    scheduleStabilityCheck();
-  }
-
-  function cancelRoundBecauseChanged() {
-    if (state === STATE.COUNTDOWN || state === STATE.STABILIZING || state === STATE.SHOWING) {
-      resetToIdle();
-    }
-  }
-
-  function scheduleStabilityCheck() {
-    if (state === STATE.WINNER_WAIT) return;
-
-    if (stabilityTimer) clearTimeout(stabilityTimer);
-    stabilityTimer = null;
-
-    const eligibleSig = currentEligibilitySignature();
-    const eligibleCount = eligibleSig.length ? eligibleSig.split(",").filter(Boolean).length : 0;
-
-    if (eligibleCount < 2) {
-      setStatus("Need 2+ fingers");
-      return;
-    }
-
-    state = STATE.STABILIZING;
-    setStatus("Hold steady");
-
-    stabilityTimer = setTimeout(() => {
-      const sigNow = currentEligibilitySignature();
-      const countNow = sigNow.length ? sigNow.split(",").filter(Boolean).length : 0;
-
-      if (sigNow === eligibleSig && countNow >= 2 && state === STATE.STABILIZING) {
-        startCountdown(sigNow.split(",").map(n => Number(n)));
-      } else {
-        scheduleStabilityCheck();
-      }
-    }, STABLE_MS);
-  }
-
-  function secureRandomIndex(n) {
-    const arr = new Uint32Array(1);
-    crypto.getRandomValues(arr);
-    return arr[0] % n;
-  }
-
-  function startCountdown(ids) {
-    if (ids.length < 2) return;
-
-    lockedIds = ids.slice();
-    state = STATE.COUNTDOWN;
-    startCountdownVisuals();
-
-    setStatus("Choosing");
-
-    // Visually keep all locked bubbles active
-    for (const [id, t] of touches.entries()) {
-      const isLocked = lockedIds.includes(id);
-      const isIgnored = mode === MODE.ELIM && eliminated.has(id);
-      t.el.classList.toggle("muted", !isLocked || isIgnored);
-      t.el.classList.remove("winner", "pulse", "eliminated");
-    }
-
-    countdownTimer = setTimeout(() => {
-      countdownTimer = null;
-      stopCountdownVisuals();
-
-      if (mode === MODE.SELECT) {
-        resolveSelectMode();
-      } else {
-        resolveEliminationStep();
-      }
-    }, COUNTDOWN_MS);
-  }
-
-
-  function resolveSelectMode() {
-    const stillThere = lockedIds.filter(id => touches.has(id));
-    if (stillThere.length < 2) {
-      resetToIdle();
-      return;
-    }
-
-    const chosen = stillThere[secureRandomIndex(stillThere.length)];
-    winnerId = chosen;
-
-    for (const [id, t] of touches.entries()) {
-      if (id === chosen) {
-        t.el.classList.remove("muted");
-        t.el.classList.add("winner");
-      } else {
-        t.el.classList.add("muted");
-      }
-    }
-
-    vibrate([40, 40, 40]);
-    setStatus("Chosen");
-
-    state = STATE.WINNER_WAIT;
-  }
-
-  function resolveEliminationStep() {
-    // Initialize remaining on the first elimination step
-    if (remaining.size === 0) {
-      const base = lockedIds.filter(id => touches.has(id));
-      for (const id of base) remaining.add(id);
-    }
-
-    // Recompute eligible among remaining
-    const eligible = [];
-    for (const id of remaining) {
-      if (!touches.has(id)) continue;
-      if (eliminated.has(id)) continue;
-      eligible.push(id);
-    }
-
-    if (eligible.length <= 1) {
-      // Winner reached
-      const finalId = eligible.length === 1 ? eligible[0] : pickAnyRemainingOnScreen();
-      if (finalId == null) {
-        resetToIdle();
-        return;
-      }
-      winnerId = finalId;
-
-      for (const [id, t] of touches.entries()) {
-        if (id === finalId) {
-          t.el.classList.remove("muted");
-          t.el.classList.add("winner");
-        } else {
-          t.el.classList.add("muted");
-        }
-      }
-
-      vibrate([60, 60, 60]);
-      setStatus("Winner");
-      state = STATE.WINNER_WAIT;
-      return;
-    }
-
-    // Eliminate one
-    const outId = eligible[secureRandomIndex(eligible.length)];
-    eliminated.add(outId);
-    remaining.delete(outId);
-
-    // Animate: eliminated fades, others pulse
-    for (const [id, t] of touches.entries()) {
-      if (id === outId) {
-        t.el.classList.add("eliminated");
-      } else if (!eliminated.has(id) && remaining.has(id)) {
-        t.el.classList.remove("muted");
-        t.el.classList.add("pulse");
-      } else {
-        t.el.classList.add("muted");
-      }
-    }
-
-    vibrate([30, 30, 30]);
-
-    state = STATE.SHOWING;
-    setStatus("Eliminated");
-
-    setTimeout(() => {
-      // Remove pulse, keep only remaining active
-      for (const [id, t] of touches.entries()) {
-        t.el.classList.remove("pulse");
-
-        if (eliminated.has(id)) {
-          t.el.classList.add("muted");
-        } else if (remaining.has(id)) {
-          t.el.classList.remove("muted");
-        } else {
-          t.el.classList.add("muted");
-        }
-      }
-
-      // Continue with next cycle, using stability check over remaining
-      state = STATE.IDLE;
-      setStatus("Hold steady");
-      scheduleStabilityCheck();
-    }, 650);
-  }
-
-  function pickAnyRemainingOnScreen() {
-    for (const id of remaining) {
-      if (touches.has(id) && !eliminated.has(id)) return id;
-    }
-    // If remaining is empty due to lifts, fallback to any active non-eliminated touch
-    const ids = getEligibleIdsNow();
-    if (ids.length) return ids[0];
-    return null;
-  }
-
-  function handleTouchStart(e) {
-    e.preventDefault();
-
-    for (const t of Array.from(e.changedTouches)) {
-      const id = t.identifier;
-      if (touches.has(id)) continue;
-
-      const el = makeFingerEl();
-      touches.set(id, { x: t.clientX, y: t.clientY, el });
-      positionFingerEl(el, t.clientX, t.clientY);
-    }
-
-    cancelRoundBecauseChanged();
-    scheduleStabilityCheck();
-  }
-
-  function handleTouchMove(e) {
-    e.preventDefault();
-
-    for (const t of Array.from(e.changedTouches)) {
-      const id = t.identifier;
-      const entry = touches.get(id);
-      if (!entry) continue;
-
-      entry.x = t.clientX;
-      entry.y = t.clientY;
-      positionFingerEl(entry.el, entry.x, entry.y);
-    }
-  }
-
-  function handleTouchEnd(e) {
-    e.preventDefault();
-
-    for (const t of Array.from(e.changedTouches)) {
-      const id = t.identifier;
-      const entry = touches.get(id);
-      if (!entry) continue;
-
-      removeFingerEl(entry.el);
-      touches.delete(id);
-
-      if (mode === MODE.ELIM) {
-        remaining.delete(id);
-        eliminated.delete(id);
-      }
-
-      if (state === STATE.WINNER_WAIT && winnerId === id) {
-        // Winner lifted, end round
-        resetToIdle();
-        continue;
-      }
-    }
-
-    cancelRoundBecauseChanged();
-    scheduleStabilityCheck();
-  }
-
-  // Attach touch listeners, non-passive so preventDefault works
-  arena.addEventListener("touchstart", handleTouchStart, { passive: false });
-  arena.addEventListener("touchmove", handleTouchMove, { passive: false });
-  arena.addEventListener("touchend", handleTouchEnd, { passive: false });
-  arena.addEventListener("touchcancel", handleTouchEnd, { passive: false });
-
-  // Initial status
-  setStatus("Select mode");
-  resetToIdle();
-})();
-
-function startCountdownVisuals() {
-  arena.classList.add("countdown");
-  for (const id of lockedIds) {
-    const t = touches.get(id);
-    if (t) t.el.classList.add("counting");
-  }
-
-  // Optional subtle haptics during countdown
-  countdownVisualTimer = setInterval(() => vibrate(10), 650);
+// ============================================================
+// SECTION 1 — SETUP
+// Get the canvas element and prepare it for drawing
+// ============================================================
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d'); // '2d' means we draw in 2D
+const instructions = document.getElementById('instructions');
+
+// Store all active touches — each finger gets its own entry
+let touches = {};
+
+// App state machine — tracks which phase we're in
+// Phases: 'waiting' → 'stabilizing' → 'countdown' → 'chosen'
+let state = 'waiting';
+
+// Timers
+let stabilityTimer = null;   // counts the 1 second of stable fingers
+let countdownTimer = null;   // counts the 2-3 second countdown
+let animationFrame = null;   // drives the animation loop
+
+// Countdown duration in milliseconds (2.5 seconds)
+const COUNTDOWN_DURATION = 2500;
+
+// How long fingers must stay stable before countdown starts (1 second)
+const STABILITY_DURATION = 1000;
+
+// The index of the winning touch (set after selection)
+let winnerId = null;
+
+// Countdown progress — goes from 0 to 1 over the countdown duration
+let countdownProgress = 0;
+let countdownStart = null;
+
+// Make the canvas fill the screen at full resolution (important for sharp drawing on iPhone)
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
 
-function stopCountdownVisuals() {
-  arena.classList.remove("countdown");
-  for (const { el } of touches.values()) {
-    el.classList.remove("counting");
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ============================================================
+// SECTION 2 — TOUCH HANDLING
+// Responds to fingers being placed, moved, or lifted
+// ============================================================
+
+canvas.addEventListener('touchstart', handleTouchChange, { passive: false });
+canvas.addEventListener('touchend', handleTouchChange, { passive: false });
+canvas.addEventListener('touchcancel', handleTouchChange, { passive: false });
+canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+function handleTouchMove(e) {
+  e.preventDefault(); // stops the page from scrolling
+
+  // Update position of each finger as it moves
+  for (let t of e.touches) {
+    if (touches[t.identifier]) {
+      touches[t.identifier].x = t.clientX;
+      touches[t.identifier].y = t.clientY;
+    }
   }
-  if (countdownVisualTimer) clearInterval(countdownVisualTimer);
-  countdownVisualTimer = null;
 }
 
+function handleTouchChange(e) {
+  e.preventDefault(); // stops the page from scrolling
+
+  // If a winner is already shown, any touch resets the whole app
+  if (state === 'chosen') {
+    resetAll();
+    return;
+  }
+
+  // Rebuild the touches object from the current live touches
+  const previousCount = Object.keys(touches).length;
+  const newTouches = {};
+  for (let t of e.touches) {
+    // Keep existing touch data if finger was already tracked, otherwise create new entry
+    newTouches[t.identifier] = touches[t.identifier] || {
+      x: t.clientX,
+      y: t.clientY,
+      radius: 40,        // starting circle size
+      opacity: 1,
+      pulse: 0           // used for the pulsing animation during countdown
+    };
+    // Always update position
+    newTouches[t.identifier].x = t.clientX;
+    newTouches[t.identifier].y = t.clientY;
+  }
+  touches = newTouches;
+
+  const count = Object.keys(touches).length;
+
+  // Hide instructions once fingers are on screen
+  instructions.style.display = count > 0 ? 'none' : 'block';
+
+  // If we're in countdown phase and finger count changes — reset everything
+  if (state === 'countdown') {
+    resetCountdown();
+    return;
+  }
+
+  // If fewer than 2 fingers, go back to waiting
+  if (count < 2) {
+    resetStability();
+    state = 'waiting';
+    return;
+  }
+
+  // If finger count changed during stabilizing phase, restart the stability timer
+  if (state === 'stabilizing' || state === 'waiting') {
+    resetStability();
+    startStabilityTimer();
+  }
+}
+
+function startStabilityTimer() {
+  state = 'stabilizing';
+
+  // Wait 1 second — if nothing changes, begin countdown
+  stabilityTimer = setTimeout(() => {
+    if (Object.keys(touches).length >= 2) {
+      startCountdown();
+    }
+  }, STABILITY_DURATION);
+}
+
+function resetStability() {
+  clearTimeout(stabilityTimer);
+  stabilityTimer = null;
+}
+
+// ============================================================
+// SECTION 3 — COUNTDOWN, SELECTION & DRAWING
+// ============================================================
+
+function startCountdown() {
+  state = 'countdown';
+  countdownStart = performance.now(); // record when countdown began
+  countdownProgress = 0;
+}
+
+function selectWinner() {
+  // Pick a random finger from the active touches
+  const ids = Object.keys(touches);
+  winnerId = ids[Math.floor(Math.random() * ids.length)];
+  state = 'chosen';
+}
+
+function resetCountdown() {
+  countdownStart = null;
+  countdownProgress = 0;
+  winnerId = null;
+  // Go back to stabilizing so the 1-second wait starts again
+  startStabilityTimer();
+}
+
+function resetAll() {
+  clearTimeout(stabilityTimer);
+  clearTimeout(countdownTimer);
+  stabilityTimer = null;
+  countdownTimer = null;
+  countdownStart = null;
+  countdownProgress = 0;
+  winnerId = null;
+  touches = {};
+  state = 'waiting';
+  instructions.style.display = 'block';
+}
+
+// ============================================================
+// ANIMATION LOOP — runs every frame (~60fps) to draw everything
+// ============================================================
+
+function animate(timestamp) {
+  // Clear the canvas each frame
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // If in countdown, update progress (0 = just started, 1 = done)
+  if (state === 'countdown' && countdownStart !== null) {
+    countdownProgress = Math.min((timestamp - countdownStart) / COUNTDOWN_DURATION, 1);
+
+    // When countdown reaches 100%, pick the winner
+    if (countdownProgress >= 1) {
+      selectWinner();
+    }
+  }
+
+  // Draw each finger's circle
+  for (let id in touches) {
+    const touch = touches[id];
+    const isWinner = (state === 'chosen' && id === winnerId);
+    const isLoser = (state === 'chosen' && id !== winnerId);
+
+    // Don't draw losers after selection
+    if (isLoser) continue;
+
+    // Pulse animation — uses sine wave to smoothly grow and shrink
+    // During countdown: pulses faster as countdown progresses
+    const pulseSpeed = state === 'countdown' ? 3 + countdownProgress * 4 : 1;
+    touch.pulse = (touch.pulse || 0) + 0.05 * pulseSpeed;
+    const pulseFactor = Math.sin(touch.pulse);
+
+    let radius = 40;
+    let opacity = 1;
+    let lineWidth = 3;
+
+    if (state === 'countdown') {
+      // Circles pulse bigger/smaller during countdown
+      radius = 40 + pulseFactor * 15;
+      lineWidth = 3 + countdownProgress * 3;
+    }
+
+    if (isWinner) {
+      // Winner circle: large, blinking brightness and size
+      const blink = Math.sin(timestamp * 0.008);
+      radius = 70 + blink * 20;
+      opacity = 0.6 + blink * 0.4;
+      lineWidth = 5;
+    }
+
+    // Draw the circle
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = isWinner
+      ? `rgba(255, 220, 50, ${opacity})`   // gold for winner
+      : `rgba(255, 255, 255, ${opacity})`; // white for others
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+
+    // Small dot at finger center
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = isWinner ? `rgba(255, 220, 50, ${opacity})` : 'rgba(255,255,255,0.8)';
+    ctx.fill();
+  }
+
+  // Keep the animation loop running
+  animationFrame = requestAnimationFrame(animate);
+}
+
+// Start the animation loop immediately
+animationFrame = requestAnimationFrame(animate);

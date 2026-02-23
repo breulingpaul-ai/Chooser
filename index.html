@@ -1,31 +1,16 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen" />
   <title>Chooser</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Chooser</div>
-
-    <div class="mode-toggle" role="group" aria-label="Mode">
-      <button id="modeSelect" class="mode-btn active" type="button">Select</button>
-      <button id="modeElim" class="mode-btn" type="button">Elimination</button>
-    </div>
-  </header>
-
-  <main id="arena" aria-label="Touch arena">
-    <div class="hint" id="hint">
-      Place 2+ fingers. Hold steady for 1 second. Then it chooses.
-    </div>
-
-    <div class="status" id="status" aria-live="polite"></div>
-  </main>
-
+  <div id="instructions">Place 2 or more fingers on the screen</div>
+  <canvas id="canvas"></canvas>
   <script src="app.js"></script>
 </body>
 </html>
