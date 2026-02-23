@@ -5,18 +5,59 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.png" />
   <title>Chooser</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Home screen shown when no fingers are on screen -->
+
+  <!-- Home screen title (visible when no fingers on screen) -->
   <div id="title">
     <h1>Chooser</h1>
     <p>Random Finger Selector</p>
   </div>
 
-  <!-- Subtle top hint when only 1 finger is detected -->
+  <!-- Subtle hint when only 1 finger is on screen -->
   <div id="hint">Place at least 2 fingers</div>
+
+  <!-- Max fingers reached warning -->
+  <div id="maxwarning">Maximum 10 fingers reached</div>
+
+  <!-- Current mode label shown subtly during play -->
+  <div id="modelabel">Classic Chooser</div>
+
+  <!-- Hamburger menu button top right -->
+  <button id="menubutton" aria-label="Change game mode">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
+
+  <!-- Mode selection overlay -->
+  <div id="menuoverlay">
+    <div id="menupanel">
+      <h2>Game Mode</h2>
+
+      <button class="modebutton active" data-mode="classic">
+        <span class="modename">Classic Chooser</span>
+        <span class="modedesc">Random selection from all fingers</span>
+      </button>
+
+      <button class="modebutton" data-mode="elimination">
+        <span class="modename">Elimination</span>
+        <span class="modedesc">One by one until one remains</span>
+      </button>
+
+      <button class="modebutton" data-mode="scheich">
+        <span class="modename">Scheich Mode</span>
+        <span class="modedesc">Feel the luck... or is it?</span>
+      </button>
+
+      <button id="closebutton">Done</button>
+    </div>
+  </div>
 
   <canvas id="canvas"></canvas>
   <script src="app.js"></script>

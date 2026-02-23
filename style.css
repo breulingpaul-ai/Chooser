@@ -5,7 +5,6 @@
 }
 
 body {
-  /* Orange gradient matching the Chooser! aesthetic */
   background: linear-gradient(160deg, #ff3c00 0%, #ff6a00 40%, #ff9500 100%);
   overflow: hidden;
   width: 100vw;
@@ -21,7 +20,7 @@ canvas {
   left: 0;
 }
 
-/* Home screen title */
+/* ---- Home screen title ---- */
 #title {
   position: absolute;
   top: 50%;
@@ -51,7 +50,7 @@ canvas {
   text-transform: uppercase;
 }
 
-/* Subtle hint at top when only 1 finger is on screen */
+/* ---- 1-finger hint at top ---- */
 #hint {
   position: absolute;
   top: 0;
@@ -71,4 +70,158 @@ canvas {
 
 #hint.visible {
   opacity: 1;
+}
+
+/* ---- Max fingers warning ---- */
+#maxwarning {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  padding: 16px;
+  font-family: -apple-system, sans-serif;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 1px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+#maxwarning.visible {
+  opacity: 1;
+}
+
+/* ---- Current mode label bottom center ---- */
+#modelabel {
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ---- Hamburger menu button ---- */
+#menubutton {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  padding: 10px;
+}
+
+#menubutton span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: white;
+  border-radius: 2px;
+}
+
+/* ---- Mode selection overlay ---- */
+#menuoverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+#menuoverlay.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+#menupanel {
+  background: rgba(30, 10, 0, 0.92);
+  backdrop-filter: blur(20px);
+  border-radius: 24px 24px 0 0;
+  padding: 32px 24px 48px;
+  width: 100%;
+  max-width: 480px;
+}
+
+#menupanel h2 {
+  font-family: -apple-system, sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+  margin-bottom: 24px;
+  letter-spacing: 1px;
+}
+
+/* ---- Individual mode buttons ---- */
+.modebutton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modebutton.active {
+  border-color: rgba(255, 150, 50, 0.8);
+  background: rgba(255, 120, 30, 0.2);
+}
+
+.modename {
+  font-family: -apple-system, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.modedesc {
+  font-family: -apple-system, sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ---- Close/Done button ---- */
+#closebutton {
+  width: 100%;
+  margin-top: 8px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 14px;
+  font-family: -apple-system, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
 }
