@@ -5,7 +5,8 @@
 }
 
 body {
-  background-color: #000;
+  /* Orange gradient matching the Chooser! aesthetic */
+  background: linear-gradient(160deg, #ff3c00 0%, #ff6a00 40%, #ff9500 100%);
   overflow: hidden;
   width: 100vw;
   height: 100vh;
@@ -15,17 +16,59 @@ canvas {
   display: block;
   width: 100vw;
   height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
-#instructions {
+/* Home screen title */
+#title {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  color: rgba(255, 255, 255, 0.4);
-  font-family: -apple-system, sans-serif;
-  font-size: 18px;
+  transform: translate(-50%, -60%);
   text-align: center;
   pointer-events: none;
   z-index: 10;
+}
+
+#title h1 {
+  font-family: -apple-system, sans-serif;
+  font-size: 52px;
+  font-weight: 800;
+  color: white;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+#title p {
+  font-family: -apple-system, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 2px;
+  margin-top: 8px;
+  text-transform: uppercase;
+}
+
+/* Subtle hint at top when only 1 finger is on screen */
+#hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  padding: 16px;
+  font-family: -apple-system, sans-serif;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 1px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+#hint.visible {
+  opacity: 1;
 }

@@ -9,7 +9,15 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="instructions">Place 2 or more fingers on the screen</div>
+  <!-- Home screen shown when no fingers are on screen -->
+  <div id="title">
+    <h1>Chooser</h1>
+    <p>Random Finger Selector</p>
+  </div>
+
+  <!-- Subtle top hint when only 1 finger is detected -->
+  <div id="hint">Place at least 2 fingers</div>
+
   <canvas id="canvas"></canvas>
   <script src="app.js"></script>
 </body>
