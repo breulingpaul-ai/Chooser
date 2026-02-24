@@ -358,15 +358,14 @@ function selectWinner() {
     winnerId = eligible[Math.floor(Math.random() * eligible.length)];
   }
 
-  // Mark as eliminated immediately so touch events ignore this finger right away
-  if (currentMode === 'elimination') {
-    eliminatedIds.add(winnerId);
-  }
-
+// In elimination: visually show winner first, then eliminate after animation
   state = 'chosen';
 
   if (currentMode === 'elimination') {
     setTimeout(() => {
+      // Now actually eliminate the winner visually after animation
+      eliminatedIds.add(winnerId);
+
       // Check how many non-eliminated fingers are still on screen
       const remaining = Object.keys(touches).filter(id => !eliminatedIds.has(id));
       if (remaining.length === 1) {
@@ -509,11 +508,12 @@ function animate(timestamp) {
     const isWinner = (state === 'chosen' && id === winnerId);
     const isLoser = (state === 'chosen' && id !== winnerId && !isEliminated);
 
-    // Classic and scheich: non-winners vanish immediately on selection
+    // Classic and scheich: non-winners vanish immediately
     if ((currentMode === 'classic' || currentMode === 'scheich') && state === 'chosen' && !isWinner) continue;
 
-    // Skip already eliminated fingers
-    if (isEliminated) continue;
+    // Skip already eliminated fingers (but NOT the current winner in elimination)
+    // Winner gets shown for 2 seconds before being added to eliminatedIds
+    if (isEliminated && id !== winnerId) continue;
 
     const pulseSpeed = state === 'countdown' ? 3 + countdownProgress * 4 : 1;
     touch.pulse = (touch.pulse || 0) + 0.05 * pulseSpeed;
