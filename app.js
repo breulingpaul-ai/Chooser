@@ -12,32 +12,55 @@ const menuButton = document.getElementById('menubutton');
 const menuOverlay = document.getElementById('menuoverlay');
 const closeButton = document.getElementById('closebutton');
 const modeButtons = document.querySelectorAll('.modebutton');
+const startButton = document.getElementById('startbutton');
 
-// Current game mode: 'classic', 'elimination', 'scheich'
+// Current game mode
 let currentMode = 'classic';
 
-// All active touches — keyed by touch identifier
-let touches = {};
-
-// In elimination mode, tracks which touch IDs have been eliminated
+// ---- Standard mode state (classic / elimination / scheich) ----
+let touches = {};           // active touch points keyed by identifier
 let eliminatedIds = new Set();
-
-// The order fingers were placed — used by Scheich mode
-let touchOrder = [];
-
-// App state: 'waiting' → 'stabilizing' → 'countdown' → 'chosen'
-let state = 'waiting';
-
+let touchOrder = [];        // order fingers were placed (for scheich)
+let state = 'waiting';      // waiting → stabilizing → countdown → chosen
 let stabilityTimer = null;
 let hintTimer = null;
 let countdownStart = null;
 let countdownProgress = 0;
 let winnerId = null;
 
-const COUNTDOWN_DURATION = 2500; // ms
-const STABILITY_DURATION = 1000; // ms
-const HINT_DURATION = 3000;      // ms
-const MAX_TOUCHES = 10;          // browser maximum
+const COUNTDOWN_DURATION = 2500;
+const STABILITY_DURATION = 1000;
+const HINT_DURATION = 3000;
+const MAX_TOUCHES = 5; // iOS Safari hard limit
+
+// ---- Family mode state ----
+// Stores registered tap circles: { x, y, color, number, id }
+let familyPlayers = [];
+let familyState = 'registering'; // registering → countdown → chosen
+let familyCountdownStart = null;
+let familyCountdownProgress = 0;
+let familyWinnerId = null;
+let familyPulse = 0; // shared pulse counter for countdown animation
+
+// Distinct colors for up to 10 family players
+const FAMILY_COLORS = [
+  '#FF6B6B', // red
+  '#4ECDC4', // teal
+  '#45B7D1', // blue
+  '#96CEB4', // green
+  '#FFEAA7', // yellow
+  '#DDA0DD', // plum
+  '#98D8C8', // mint
+  '#F7DC6F', // gold
+  '#BB8FCE', // purple
+  '#85C1E9'  // sky blue
+];
+
+// Scheich safe zone: top-left quarter of screen
+// Any finger placed here is excluded from selection
+function isInScheichSafeZone(x, y) {
+  return x < window.innerWidth / 2 && y < window.innerHeight / 2;
+}
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -52,8 +75,7 @@ window.addEventListener('resize', resizeCanvas);
 // ============================================================
 
 menuButton.addEventListener('click', () => {
-  // Only open menu when no game is in progress
-  if (state === 'waiting') {
+  if (state === 'waiting' && familyState === 'registering') {
     menuOverlay.classList.add('visible');
   }
 });
@@ -64,28 +86,119 @@ closeButton.addEventListener('click', () => {
 
 modeButtons.forEach(btn => {
   btn.addEventListener('click', () => {
-    // Update active state visually
     modeButtons.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
-    // Set the mode
     currentMode = btn.dataset.mode;
 
-    // Update the subtle mode label on the play screen
     const labels = {
       classic: 'Classic Chooser',
       elimination: 'Elimination',
-      scheich: 'Scheich Mode'
+      scheich: 'Scheich Mode',
+      family: 'Family Mode'
     };
     modelabelEl.textContent = labels[currentMode];
-
     menuOverlay.classList.remove('visible');
+
+    // Reset everything when switching modes
+    resetAll();
   });
 });
 
 
 // ============================================================
-// SECTION 3 — TOUCH HANDLING
+// SECTION 3 — FAMILY MODE LOGIC
+// ============================================================
+
+// Family mode uses click/tap events, not touch events
+// This allows up to 10 registered spots regardless of iOS touch limit
+canvas.addEventListener('click', handleFamilyTap);
+
+// Start button triggers the draw in family mode
+startButton.addEventListener('click', () => {
+  if (currentMode === 'family' && familyPlayers.length >= 2) {
+    startFamilyCountdown();
+  }
+});
+
+function handleFamilyTap(e) {
+  // Only active in family mode during registration phase
+  if (currentMode !== 'family') return;
+  if (familyState !== 'registering') return;
+
+  const x = e.clientX;
+  const y = e.clientY;
+
+  // Check if tap is on an existing circle — if so, remove it (undo)
+  const TAP_RADIUS = 50;
+  const existingIndex = familyPlayers.findIndex(p => {
+    const dx = p.x - x;
+    const dy = p.y - y;
+    return Math.sqrt(dx * dx + dy * dy) < TAP_RADIUS;
+  });
+
+  if (existingIndex !== -1) {
+    // Remove the tapped circle and renumber remaining
+    familyPlayers.splice(existingIndex, 1);
+    familyPlayers.forEach((p, i) => {
+      p.number = i + 1;
+      p.color = FAMILY_COLORS[i];
+    });
+  } else {
+    // Add new player if under limit
+    if (familyPlayers.length >= 10) {
+      showMaxWarning();
+      return;
+    }
+    const number = familyPlayers.length + 1;
+    familyPlayers.push({
+      x,
+      y,
+      color: FAMILY_COLORS[number - 1],
+      number,
+      id: Date.now() + Math.random(), // unique id
+      pulse: 0
+    });
+  }
+
+  // Hide home title once first player registers
+  titleEl.style.display = familyPlayers.length > 0 ? 'none' : 'block';
+
+  // Show start button when 2+ players registered
+  if (familyPlayers.length >= 2) {
+    startButton.classList.add('visible');
+  } else {
+    startButton.classList.remove('visible');
+  }
+}
+
+function startFamilyCountdown() {
+  familyState = 'countdown';
+  familyCountdownStart = performance.now();
+  familyCountdownProgress = 0;
+  startButton.classList.remove('visible');
+}
+
+function selectFamilyWinner() {
+  // Pick a random player from registered family players
+  const idx = Math.floor(Math.random() * familyPlayers.length);
+  familyWinnerId = familyPlayers[idx].id;
+  familyState = 'chosen';
+}
+
+function resetFamilyMode() {
+  familyPlayers = [];
+  familyState = 'registering';
+  familyCountdownStart = null;
+  familyCountdownProgress = 0;
+  familyWinnerId = null;
+  familyPulse = 0;
+  startButton.classList.remove('visible');
+  titleEl.style.display = 'block';
+}
+
+
+// ============================================================
+// SECTION 4 — STANDARD TOUCH HANDLING (classic/elimination/scheich)
 // ============================================================
 
 canvas.addEventListener('touchstart', handleTouchChange, { passive: false });
@@ -95,6 +208,7 @@ canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
 
 function handleTouchMove(e) {
   e.preventDefault();
+  if (currentMode === 'family') return; // family mode ignores touch move
   for (let t of e.touches) {
     if (touches[t.identifier]) {
       touches[t.identifier].x = t.clientX;
@@ -106,9 +220,11 @@ function handleTouchMove(e) {
 function handleTouchChange(e) {
   e.preventDefault();
 
-  // Tapping after winner shown — reset and start fresh
+  // Family mode handles its own input via click events
+  if (currentMode === 'family') return;
+
+  // After winner shown — tap to reset
   if (state === 'chosen') {
-    // In elimination: if fingers still remain, auto-restart countdown
     if (currentMode === 'elimination') {
       const remaining = Object.keys(touches).filter(id => !eliminatedIds.has(id));
       if (remaining.length >= 2) {
@@ -122,10 +238,10 @@ function handleTouchChange(e) {
     return;
   }
 
-  // Rebuild touches from live touch list
+  // Rebuild touches from current live touches
   const newTouches = {};
   for (let t of e.touches) {
-    // Check max touch limit
+    // Enforce 5-finger max — warn and ignore extras
     if (!touches[t.identifier] && Object.keys(newTouches).length >= MAX_TOUCHES) {
       showMaxWarning();
       continue;
@@ -134,33 +250,28 @@ function handleTouchChange(e) {
     newTouches[t.identifier] = touches[t.identifier] || {
       x: t.clientX,
       y: t.clientY,
-      radius: 40,
-      opacity: 1,
       pulse: 0,
-      placedAt: Date.now() // timestamp for Scheich mode ordering
+      placedAt: Date.now()
     };
     newTouches[t.identifier].x = t.clientX;
     newTouches[t.identifier].y = t.clientY;
 
-    // Track placement order for Scheich mode
-    if (!touchOrder.includes(t.identifier)) {
-      touchOrder.push(t.identifier);
+    // Track placement order for scheich mode
+    if (!touchOrder.includes(String(t.identifier))) {
+      touchOrder.push(String(t.identifier));
     }
   }
 
-  // Remove lifted fingers from order tracking
+  // Clean up lifted fingers from order list
   touchOrder = touchOrder.filter(id => newTouches[id]);
   touches = newTouches;
 
   const count = Object.keys(touches).length;
 
-  // Show/hide home screen title
   titleEl.style.display = count > 0 ? 'none' : 'block';
-
-  // Show 1-finger hint
   updateHint(count);
 
-  // Countdown interrupted by finger change
+  // Any finger change during countdown resets it
   if (state === 'countdown') {
     resetCountdown();
     return;
@@ -172,7 +283,6 @@ function handleTouchChange(e) {
     return;
   }
 
-  // Restart stability check on any finger change
   if (state === 'stabilizing' || state === 'waiting') {
     resetStability();
     startStabilityTimer();
@@ -191,21 +301,19 @@ function updateHint(count) {
 
 function showMaxWarning() {
   maxWarningEl.classList.add('visible');
-  setTimeout(() => maxWarningEl.classList.remove('visible'), 2000);
+  setTimeout(() => maxWarningEl.classList.remove('visible'), 2500);
 }
 
 
 // ============================================================
-// SECTION 4 — GAME STATE LOGIC
+// SECTION 5 — STANDARD GAME STATE (classic/elimination/scheich)
 // ============================================================
 
 function startStabilityTimer() {
   state = 'stabilizing';
   stabilityTimer = setTimeout(() => {
-    const activeTouches = Object.keys(touches).filter(id => !eliminatedIds.has(id));
-    if (activeTouches.length >= 2) {
-      startCountdown();
-    }
+    const active = Object.keys(touches).filter(id => !eliminatedIds.has(id));
+    if (active.length >= 2) startCountdown();
   }, STABILITY_DURATION);
 }
 
@@ -221,40 +329,42 @@ function startCountdown() {
 }
 
 function selectWinner() {
-  // Get only non-eliminated active touches
-  const eligible = Object.keys(touches).filter(id => !eliminatedIds.has(id));
+  // Build eligible list — exclude eliminated fingers
+  let eligible = Object.keys(touches).filter(id => !eliminatedIds.has(id));
 
   if (currentMode === 'scheich') {
-    // Scheich: always pick the second finger placed (index 1 in touchOrder)
-    // Falls back to first if only one is available
-    const scheichPick = touchOrder.find(id => eligible.includes(id) && touchOrder.indexOf(id) >= 1);
-    winnerId = scheichPick || eligible[0];
+    // Remove any fingers in the top-left safe zone from the eligible pool
+    const outsideSafeZone = eligible.filter(id => {
+      const t = touches[id];
+      return !isInScheichSafeZone(t.x, t.y);
+    });
+
+    // If everyone is in the safe zone fall back to full pool (edge case)
+    const pool = outsideSafeZone.length > 0 ? outsideSafeZone : eligible;
+    winnerId = pool[Math.floor(Math.random() * pool.length)];
   } else {
-    // Classic and Elimination: truly random
+    // Classic and Elimination: purely random
     winnerId = eligible[Math.floor(Math.random() * eligible.length)];
   }
 
   state = 'chosen';
 
-  // In elimination mode: mark winner as eliminated after showing result
-  // The next round starts automatically when user taps (handled in handleTouchChange)
   if (currentMode === 'elimination') {
     setTimeout(() => {
       eliminatedIds.add(winnerId);
       const remaining = Object.keys(touches).filter(id => !eliminatedIds.has(id));
       if (remaining.length === 1) {
-        // Final winner — celebrate them
+        // Last one standing — celebrate them
         winnerId = remaining[0];
         state = 'chosen';
       } else if (remaining.length >= 2) {
-        // More rounds to go — restart automatically
         winnerId = null;
         state = 'waiting';
         startStabilityTimer();
       } else {
         resetAll();
       }
-    }, 2000); // show eliminated result for 2 seconds before next round
+    }, 2000);
   }
 }
 
@@ -278,23 +388,101 @@ function resetAll() {
   state = 'waiting';
   titleEl.style.display = 'block';
   hintEl.classList.remove('visible');
+  // Also reset family mode if switching
+  if (currentMode === 'family') resetFamilyMode();
 }
 
 
 // ============================================================
-// SECTION 5 — ANIMATION LOOP
-// Draws all circles every frame (~60fps)
+// SECTION 6 — ANIMATION LOOP
+// Draws everything every frame (~60fps)
 // ============================================================
 
 function animate(timestamp) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Advance countdown progress
+  // ---- FAMILY MODE DRAWING ----
+  if (currentMode === 'family') {
+
+    // Advance family countdown
+    if (familyState === 'countdown' && familyCountdownStart !== null) {
+      familyCountdownProgress = Math.min(
+        (timestamp - familyCountdownStart) / COUNTDOWN_DURATION, 1
+      );
+      familyPulse += 0.05 * (3 + familyCountdownProgress * 4);
+      if (familyCountdownProgress >= 1) selectFamilyWinner();
+    }
+
+    // Draw each registered family player circle
+    for (let p of familyPlayers) {
+      const isWinner = (familyState === 'chosen' && p.id === familyWinnerId);
+      const isLoser = (familyState === 'chosen' && p.id !== familyWinnerId);
+
+      if (isLoser) continue; // losers disappear on selection
+
+      let radius = 44;
+      let opacity = 1;
+      let lineWidth = 3;
+
+      if (familyState === 'countdown') {
+        // All circles pulse during countdown
+        const pulseFactor = Math.sin(familyPulse + p.number);
+        radius = 44 + pulseFactor * 15;
+        lineWidth = 3 + familyCountdownProgress * 3;
+      }
+
+      if (isWinner) {
+        // Winner blinks and grows
+        const blink = Math.sin(timestamp * 0.008);
+        radius = 70 + blink * 20;
+        opacity = 0.6 + blink * 0.4;
+        lineWidth = 5;
+      }
+
+      // Outer colored circle
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = p.color;
+      ctx.globalAlpha = opacity;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+
+      // Filled center dot
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = opacity * 0.3;
+      ctx.fill();
+
+      // Player number inside circle
+      ctx.globalAlpha = opacity;
+      ctx.font = 'bold 18px -apple-system, sans-serif';
+      ctx.fillStyle = 'white';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.number, p.x, p.y);
+
+      ctx.globalAlpha = 1; // reset opacity
+    }
+
+    // Show instruction text in family mode during registration
+    if (familyState === 'registering' && familyPlayers.length === 0) {
+      ctx.font = '600 16px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Each player tap the screen to register', canvas.width / 2, canvas.height / 2 + 60);
+    }
+
+    requestAnimationFrame(animate);
+    return; // stop here — don't run standard drawing below
+  }
+
+  // ---- STANDARD MODE DRAWING (classic / elimination / scheich) ----
+
   if (state === 'countdown' && countdownStart !== null) {
     countdownProgress = Math.min((timestamp - countdownStart) / COUNTDOWN_DURATION, 1);
-    if (countdownProgress >= 1) {
-      selectWinner();
-    }
+    if (countdownProgress >= 1) selectWinner();
   }
 
   for (let id in touches) {
@@ -303,13 +491,12 @@ function animate(timestamp) {
     const isWinner = (state === 'chosen' && id === winnerId);
     const isLoser = (state === 'chosen' && id !== winnerId && !isEliminated);
 
-    // In classic mode losers disappear immediately
-    if (currentMode === 'classic' && isLoser) continue;
+    // Classic and scheich: non-winners vanish immediately on selection
+    if ((currentMode === 'classic' || currentMode === 'scheich') && state === 'chosen' && !isWinner) continue;
 
-    // Eliminated fingers in elimination mode fade out
+    // Skip already eliminated fingers
     if (isEliminated) continue;
 
-    // Pulse animation — sine wave creates smooth grow/shrink
     const pulseSpeed = state === 'countdown' ? 3 + countdownProgress * 4 : 1;
     touch.pulse = (touch.pulse || 0) + 0.05 * pulseSpeed;
     const pulseFactor = Math.sin(touch.pulse);
@@ -317,16 +504,14 @@ function animate(timestamp) {
     let radius = 40;
     let opacity = 1;
     let lineWidth = 3;
-    let color = 'rgba(255, 255, 255, 1)';
+    let color = `rgba(255, 255, 255, ${opacity})`;
 
     if (state === 'countdown') {
-      // Circles pulse bigger during countdown, building tension
       radius = 40 + pulseFactor * 15;
       lineWidth = 3 + countdownProgress * 3;
     }
 
     if (isWinner) {
-      // Winner: large gold blinking circle
       const blink = Math.sin(timestamp * 0.008);
       radius = 70 + blink * 20;
       opacity = 0.6 + blink * 0.4;
@@ -335,19 +520,19 @@ function animate(timestamp) {
     }
 
     if (isLoser && currentMode === 'elimination') {
-      // In elimination, non-winners stay visible but dimmed
-      opacity = 0.4;
+      // Non-winners stay visible but dimmed during elimination
+      opacity = 0.35;
       color = `rgba(255, 255, 255, ${opacity})`;
     }
 
-    // Draw the circle around the finger
+    // Outer circle
     ctx.beginPath();
     ctx.arc(touch.x, touch.y, radius, 0, Math.PI * 2);
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctx.stroke();
 
-    // Small dot at the finger's exact position
+    // Center dot
     ctx.beginPath();
     ctx.arc(touch.x, touch.y, 5, 0, Math.PI * 2);
     ctx.fillStyle = color;
@@ -357,4 +542,5 @@ function animate(timestamp) {
   requestAnimationFrame(animate);
 }
 
+// Kick off the animation loop
 requestAnimationFrame(animate);

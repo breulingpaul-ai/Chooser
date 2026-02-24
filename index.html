@@ -13,19 +13,19 @@
 </head>
 <body>
 
-  <!-- Home screen title (visible when no fingers on screen) -->
+  <!-- Home screen title -->
   <div id="title">
     <h1>Chooser</h1>
     <p>Random Finger Selector</p>
   </div>
 
-  <!-- Subtle hint when only 1 finger is on screen -->
+  <!-- 1-finger hint -->
   <div id="hint">Place at least 2 fingers</div>
 
-  <!-- Max fingers reached warning -->
-  <div id="maxwarning">Maximum 10 fingers reached</div>
+  <!-- Max fingers warning -->
+  <div id="maxwarning">Maximum 5 fingers — try Family Mode for more!</div>
 
-  <!-- Current mode label shown subtly during play -->
+  <!-- Current mode label bottom center -->
   <div id="modelabel">Classic Chooser</div>
 
   <!-- Hamburger menu button top right -->
@@ -34,6 +34,9 @@
     <span></span>
     <span></span>
   </button>
+
+  <!-- Family Mode start button -->
+  <button id="startbutton">Start Draw</button>
 
   <!-- Mode selection overlay -->
   <div id="menuoverlay">
@@ -52,7 +55,12 @@
 
       <button class="modebutton" data-mode="scheich">
         <span class="modename">Scheich Mode</span>
-        <span class="modedesc">Feel the luck... or is it?</span>
+        <span class="modedesc">Feel the luck of the draw</span>
+      </button>
+
+      <button class="modebutton" data-mode="family">
+        <span class="modename">Family Mode</span>
+        <span class="modedesc">Tap to register — up to 10 players</span>
       </button>
 
       <button id="closebutton">Done</button>
