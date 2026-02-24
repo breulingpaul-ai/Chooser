@@ -111,7 +111,7 @@ modeButtons.forEach(btn => {
 
 // Family mode uses click/tap events, not touch events
 // This allows up to 10 registered spots regardless of iOS touch limit
-canvas.addEventListener('click', handleFamilyTap);
+canvas.addEventListener('touchend', handleFamilyOrStandardTouch, { passive: false });
 
 // Start button triggers the draw in family mode
 startButton.addEventListener('click', () => {
@@ -120,13 +120,27 @@ startButton.addEventListener('click', () => {
   }
 });
 
+function handleFamilyOrStandardTouch(e) {
+  e.preventDefault();
+  if (currentMode === 'family') {
+    handleFamilyTap(e);
+  }
+  // Standard modes are handled by their own touchstart/touchend listeners
+}
+
 function handleFamilyTap(e) {
-  // Only active in family mode during registration phase
-  if (currentMode !== 'family') return;
+  if (familyState === 'chosen') {
+    resetFamilyMode();
+    titleEl.style.display = 'block';
+    return;
+  }
+
   if (familyState !== 'registering') return;
 
-  const x = e.clientX;
-  const y = e.clientY;
+  // Use the first changed touch as the tap position
+  const t = e.changedTouches[0];
+  const x = t.clientX;
+  const y = t.clientY;
 
   // Check if tap is on an existing circle — if so, remove it (undo)
   const TAP_RADIUS = 50;
@@ -202,7 +216,9 @@ function resetFamilyMode() {
 // ============================================================
 
 canvas.addEventListener('touchstart', handleTouchChange, { passive: false });
-canvas.addEventListener('touchend', handleTouchChange, { passive: false });
+canvas.addEventListener('touchend', (e) => {
+  if (currentMode !== 'family') handleTouchChange(e);
+}, { passive: false });
 canvas.addEventListener('touchcancel', handleTouchChange, { passive: false });
 canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
 
