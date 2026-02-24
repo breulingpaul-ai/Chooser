@@ -27,6 +27,7 @@ let hintTimer = null;
 let countdownStart = null;
 let countdownProgress = 0;
 let winnerId = null;
+let visualWinnerId = null; // keeps showing winner animation even after finger lifts
 
 const COUNTDOWN_DURATION = 2500;
 const STABILITY_DURATION = 1000;
@@ -359,12 +360,16 @@ function selectWinner() {
   }
 
 // In elimination: visually show winner first, then eliminate after animation
+visualWinnerId = winnerId; // save for animation before touch events can clear it
+
+  if (currentMode === 'elimination') {
+    eliminatedIds.add(winnerId); // immediately ignore this finger in touch events
+  }
+
   state = 'chosen';
 
   if (currentMode === 'elimination') {
     setTimeout(() => {
-      // Now actually eliminate the winner visually after animation
-      eliminatedIds.add(winnerId);
 
       // Check how many non-eliminated fingers are still on screen
       const remaining = Object.keys(touches).filter(id => !eliminatedIds.has(id));
@@ -389,6 +394,7 @@ function resetCountdown() {
   countdownStart = null;
   countdownProgress = 0;
   winnerId = null;
+  visualWinnerId = null;
   startStabilityTimer();
 }
 
@@ -399,6 +405,7 @@ function resetAll() {
   countdownStart = null;
   countdownProgress = 0;
   winnerId = null;
+  visualWinnerId = null;
   touches = {};
   eliminatedIds = new Set();
   touchOrder = [];
@@ -505,7 +512,7 @@ function animate(timestamp) {
   for (let id in touches) {
     const touch = touches[id];
     const isEliminated = eliminatedIds.has(id);
-    const isWinner = (state === 'chosen' && id === winnerId);
+    const isWinner = (state === 'chosen' && (id === winnerId || id === visualWinnerId));
     const isLoser = (state === 'chosen' && id !== winnerId && !isEliminated);
 
     // Classic and scheich: non-winners vanish immediately
