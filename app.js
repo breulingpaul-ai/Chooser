@@ -345,39 +345,41 @@ function startCountdown() {
 }
 
 function selectWinner() {
-  // Build eligible list — exclude eliminated fingers
   let eligible = Object.keys(touches).filter(id => !eliminatedIds.has(id));
 
   if (currentMode === 'scheich') {
-    // Remove any fingers in the top-left safe zone from the eligible pool
     const outsideSafeZone = eligible.filter(id => {
       const t = touches[id];
       return !isInScheichSafeZone(t.x, t.y);
     });
-
-    // If everyone is in the safe zone fall back to full pool (edge case)
     const pool = outsideSafeZone.length > 0 ? outsideSafeZone : eligible;
     winnerId = pool[Math.floor(Math.random() * pool.length)];
   } else {
-    // Classic and Elimination: purely random
     winnerId = eligible[Math.floor(Math.random() * eligible.length)];
+  }
+
+  // Mark as eliminated immediately so touch events ignore this finger right away
+  if (currentMode === 'elimination') {
+    eliminatedIds.add(winnerId);
   }
 
   state = 'chosen';
 
   if (currentMode === 'elimination') {
     setTimeout(() => {
-      eliminatedIds.add(winnerId);
+      // Check how many non-eliminated fingers are still on screen
       const remaining = Object.keys(touches).filter(id => !eliminatedIds.has(id));
       if (remaining.length === 1) {
-        // Last one standing — celebrate them
+        // Final winner — celebrate
         winnerId = remaining[0];
         state = 'chosen';
       } else if (remaining.length >= 2) {
+        // Next round — enough players remain
         winnerId = null;
         state = 'waiting';
         startStabilityTimer();
       } else {
+        // Everyone left the screen — full reset
         resetAll();
       }
     }, 2000);
